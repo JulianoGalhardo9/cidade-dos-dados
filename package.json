@@ -1,0 +1,20 @@
+{
+  "name": "cidade-dos-dados",
+  "version": "1.0.0",
+  "description": "Comparação visual em 3D pixelado de tipos de extração de dados: API, Web Scraping e Arquivo em lote",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --open",
+    "build": "vite build",
+    "preview": "vite preview --open"
+  },
+  "dependencies": {
+    "@fontsource/press-start-2p": "^5.0.0",
+    "@fontsource/vt323": "^5.0.0",
+    "three": "^0.160.0"
+  },
+  "devDependencies": {
+    "vite": "^5.4.0"
+  }
+}

@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cidade dos Dados · Extração em 3D</title>
+</head>
+<body>
+<div id="app">
+  <div id="scene"></div>
+  <div id="labels"></div>
+  <div id="tip"></div>
+
+  <div id="title" class="panel">
+    <h1 class="px">CIDADE DOS DADOS</h1>
+    <div class="lbl-small">TIPO DE COLETA</div>
+    <div id="picker">
+      <button data-lane="api" style="--c: var(--api)">API</button>
+      <button data-lane="scrap" style="--c: var(--scrap)">Web Scraping</button>
+      <button data-lane="batch" style="--c: var(--batch)">Arquivo em lote</button>
+    </div>
+    <div class="hint">Clique em qualquer objeto para saber o que ele significa</div>
+    <div class="hint small">Arrastar: mover · Botão direito: girar · Scroll: zoom · Duplo clique: centralizar</div>
+  </div>
+
+  <div id="stat" class="panel">
+    <h3 id="st-title"></h3>
+    <div class="grid">
+      <div><b data-k="dest">0</b><span>no destino</span></div>
+      <div><b data-k="lat">—</b><span>latência</span></div>
+      <div><b data-k="req">0</b><span>acessos</span></div>
+      <div><b data-k="rej">0</b><span>rejeitados</span></div>
+    </div>
+    <div class="status" id="st-status"></div>
+    <button id="st-code" class="link">Ver explicação e código ›</button>
+  </div>
+
+  <div id="info" class="panel">
+    <button id="info-close" class="x">×</button>
+    <h4 id="info-title"></h4>
+    <p id="info-body"></p>
+    <p id="info-meta"></p>
+    <button id="info-more" class="link"></button>
+  </div>
+
+  <div id="controls" class="panel">
+    <button id="btn-play">Pausar</button>
+    <button data-speed="0.5">½×</button><button data-speed="1" class="on">1×</button><button data-speed="2">2×</button>
+    <div class="sep"></div>
+    <button data-mode="ETL" class="on" title="Lava antes de estacionar">ETL</button><button data-mode="ELT" title="Estaciona sujo e lava no destino">ELT</button>
+    <div class="sep"></div>
+    <button id="btn-scenario"></button>
+    <div class="sep"></div>
+    <button id="btn-follow">Seguir um carro</button>
+    <button id="btn-compare">Comparar</button>
+    <button id="btn-cam" title="Volta a câmera para o início">Recentralizar</button>
+  </div>
+
+  <div id="modal" class="modal">
+    <div id="mbox" class="panel">
+      <button id="m-close" class="x">×</button>
+      <h2 id="m-title"></h2>
+      <h4>NA CIDADE</h4><p id="m-city"></p>
+      <h4>NA VIDA REAL</h4><p id="m-real"></p>
+      <div class="cols">
+        <div><h4>VANTAGENS</h4><ul id="m-pros"></ul></div>
+        <div><h4>CUIDADOS</h4><ul id="m-cons"></ul></div>
+      </div>
+      <div class="tabs">
+        <h4>CÓDIGO EM PYTHON</h4>
+        <span class="grow"></span><button id="m-copy">Copiar</button>
+      </div>
+      <pre id="m-code"></pre>
+    </div>
+  </div>
+
+  <div id="cmp" class="modal">
+    <div id="cbox" class="panel">
+      <button id="c-close" class="x">×</button>
+      <h2 class="px">COMPARAÇÃO</h2>
+      <p class="dim">As três coletas rodam o tempo todo, mesmo quando não estão na tela, com os mesmos registros surgindo na fonte.</p>
+      <table id="c-table"></table>
+    </div>
+  </div>
+</div>
+
+<!-- ================= snippets de código ================= -->
+<script type="text/plain" id="code-api-py">
+import requests, time
+
+def extrair_pedidos(base_url, token):
+    pagina, registros = 1, []
+    while True:
+        r = requests.get(f"{base_url}/pedidos",
+                         params={"page": pagina, "page_size": 100},
+                         headers={"Authorization": f"Bearer {token}"},
+                         timeout=30)
+        if r.status_code == 429:               # rate limit: espera e tenta de novo
+            time.sleep(int(r.headers.get("Retry-After", 5)))
+            continue
+        r.raise_for_status()
+        itens = r.json()["items"]
+        if not itens:                          # página vazia = acabou
+            break
+        registros.extend(itens)
+        pagina += 1
+    return registros
+</script>
+
+<script type="text/plain" id="code-scrap-py">
+import requests
+from bs4 import BeautifulSoup
+
+html = requests.get("https://loja.exemplo.com/produtos",
+                    headers={"User-Agent": "Mozilla/5.0"}, timeout=30).text
+soup = BeautifulSoup(html, "html.parser")
+
+cards = soup.select("div.produto")            # o "seletor": se o layout mudar, quebra
+if not cards:
+    raise RuntimeError("Seletor não encontrado: o layout do site mudou?")
+
+produtos = []
+for card in cards:
+    nome = card.select_one("h2.nome")
+    preco = card.select_one("span.preco")
+    if not (nome and preco):
+        continue                              # HTML incompleto = dado sujo
+    produtos.append({
+        "nome": nome.get_text(strip=True),
+        "preco": preco.get_text(strip=True),  # ainda é texto: "R$ 1.299,90"
+    })
+</script>
+
+<script type="text/plain" id="code-batch-py">
+import pandas as pd
+from pathlib import Path
+
+entrada = Path("/sftp/entrada")
+
+for arquivo in sorted(entrada.glob("vendas_*.csv")):
+    df = pd.read_csv(arquivo, sep=";", encoding="latin-1",
+                     dtype=str, on_bad_lines="warn")   # linha quebrada = aviso, não trava
+    print(f"{arquivo.name}: {len(df)} linhas")
+
+    # ... carrega no destino ...
+
+    arquivo.rename(arquivo.with_suffix(".processado"))  # evita ler o mesmo lote 2x
+</script>
+
+<script type="text/plain" id="code-wash-py">
+import json
+from datetime import date
+from pathlib import Path
+
+import pandas as pd
+from sqlalchemy import create_engine
+
+engine = create_engine("postgresql://usuario:senha@localhost/banco")
+
+
+def area_de_pouso(registros, origem):
+    # guarda o bruto do jeito que chegou: dá para reprocessar sem voltar à fonte
+    pasta = Path("raw") / origem
+    pasta.mkdir(parents=True, exist_ok=True)
+    with open(pasta / f"{date.today()}.json", "w", encoding="utf-8") as f:
+        json.dump(registros, f, ensure_ascii=False)
+    return pd.DataFrame(registros)
+
+
+def pedagio_schema(df):
+    # validação de schema: os campos obrigatórios existem e não estão vazios?
+    obrigatorios = ["id", "data", "preco", "cep"]
+    faltando = [c for c in obrigatorios if c not in df.columns]
+    if faltando:
+        raise ValueError(f"Colunas ausentes: {faltando}")
+    ok = df[obrigatorios].notna().all(axis=1)
+    return df[ok], df[~ok]                      # (segue, quarentena)
+
+
+def lava_rapido(df):
+    # transformação: "R$ 1.299,90" -> 1299.90 e datas padronizadas
+    df = df.copy()
+    df["preco"] = pd.to_numeric(
+        df["preco"].astype(str)
+                   .str.replace("R$", "", regex=False)
+                   .str.replace(".", "", regex=False)
+                   .str.replace(",", ".", regex=False)
+                   .str.strip(),
+        errors="coerce")
+    df["data"] = pd.to_datetime(df["data"], dayfirst=True, errors="coerce")
+    ruim = df["preco"].isna() | df["data"].isna()
+    return df[~ruim], df[ruim]
+
+
+def detector_duplicados(df):
+    duplicado = df.duplicated(subset="id", keep="first")
+    return df[~duplicado], df[duplicado]
+
+
+def posto_enriquecimento(df, ceps):
+    # cruza com outra tabela para ganhar informação que não veio da fonte
+    return df.merge(ceps[["cep", "cidade", "uf"]], on="cep", how="left")
+
+
+def portao_de_carga(df):
+    # grava no banco dentro de uma transação: ou entra tudo, ou nada
+    with engine.begin() as conexao:
+        df.to_sql("vendas", conexao, if_exists="append", index=False)
+
+
+def pipeline(registros, origem, ceps):
+    quarentena = []
+    df = area_de_pouso(registros, origem)
+    df, ruim = pedagio_schema(df);      quarentena.append(ruim)
+    df, ruim = lava_rapido(df);         quarentena.append(ruim)
+    df, ruim = detector_duplicados(df); quarentena.append(ruim)
+    df = posto_enriquecimento(df, ceps)
+    portao_de_carga(df)
+    pd.concat(quarentena).to_csv(f"quarentena_{origem}.csv", index=False)
+    print(f"{len(df)} gravados, {sum(len(q) for q in quarentena)} na quarentena")
+</script>
+
+<script type="module" src="/src/main.js"></script>
+</body>
+</html>
